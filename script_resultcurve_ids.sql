@@ -2,14 +2,14 @@
 DECLARE @ResultCurveId uniqueidentifier
 
 -- Create a temporary table to store the results
-CREATE TABLE #ResultsTable (ResultCurve_id varchar(100), n int, xtime float , xvalue float)
+CREATE TABLE #ResultsTable (ResultCurve_id varchar(50), n int, xtime float , xvalue float)
 
 SELECT distinct resultcurve_id, OrderNo, Batch, unique_code as Sample_Code
 INTO #Resultcurve_id_table
 FROM ResultCurve
          JOIN vwResultDetail on ResultCurve.result_id = vwResultDetail.result_id
-WHERE ResultCurve.variable_id in (SELECT variable_id FROM xVariable WHERE identifier = 'SP') --selectionner les courbes Torque
-  AND ResultCurve.result_id in (SELECT result_id FROM vwResultDetail WHERE OrderNo = 'MX22406061DL01' AND Test = 'MDR 200C')
+WHERE ResultCurve.variable_id = '8AE2CDE9-0986-47A7-8DC1-F9C56AD2C87B' --selectionner les courbes Torque
+    and ResultCurve.result_id in (SELECT distinct result_id FROM vwResultDetail WHERE OrderNo = 'MX224020318T901' AND Test = 'MDR 200C' AND Status != 'Ignored')
 
 -- Declare the cursor
 DECLARE cur CURSOR FOR
@@ -24,7 +24,6 @@ FETCH NEXT FROM cur INTO @ResultCurveId
 -- Loop through the rows
 WHILE @@FETCH_STATUS = 0
     BEGIN
-        -- Execute the stored procedure for each ResultCurveId and insert the result into the temporary table
         INSERT INTO #ResultsTable
             EXEC dbo.CurveData @ResultCurveId
 
@@ -32,7 +31,6 @@ WHILE @@FETCH_STATUS = 0
         FETCH NEXT FROM cur INTO @ResultCurveId
     END
 
--- Close and deallocate the cursor
 CLOSE cur
 DEALLOCATE cur
 
