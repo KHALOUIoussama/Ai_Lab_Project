@@ -1,9 +1,11 @@
+from matplotlib import pyplot as plt
 from scipy.cluster.hierarchy import linkage, fcluster
 from sqlalchemy import text
 from sqlalchemy.engine.url import URL
 from sqlalchemy import create_engine
 import pandas as pd
 from tests import *
+import seaborn as sns
 
 
 def setup(host, file_path, do_trim):
@@ -66,9 +68,12 @@ def execute_tests(host, OrderNo):
     eng.connect()
 
     with eng.begin() as con:
-        query_TMA = pd.read_sql_query(read_and_replace('TMA.sql', OrderNo), con)
 
-        test_TMA = query_TMA
+        test_Nb_Mdr = pd.read_sql_query(read_and_replace('Nb_Mdr.sql', OrderNo), con)['nb_instruments'][0]
+        if test_Nb_Mdr > 1:
+            print('Warning : Testé sur ' + str(test_Nb_Mdr) + ' MDRs\n')
+
+        test_TMA = pd.read_sql_query(read_and_replace('TMA.sql', OrderNo), con)
 
         if not test_TMA.empty:
             print('!!!!!!!!!!!!!!!!!!! TMA !!!!!!!!!!!!!!!!!!!!\n')
@@ -161,18 +166,25 @@ def execute_tests(host, OrderNo):
             print('Rien à Signaler')
 
         queryS = pd.read_sql_query(read_and_replace('Cas_special.sql', OrderNo), con)
-        testS = casS(queryS)
+        queryS_prime = utils.trim(utils.add_fitted_slope(utils.trim(queryS)))
+
+        if host == r'sql1djol\mel':
+            sns.lineplot(x='xtime', y='xvalue', hue='Sample_Code', data=queryS, legend=False)
+
+        testS = utils.df_distance(queryS_prime)
         test_S_score = testS[0]
 
         # Cas Special
         if test_S_score > 8:
             print('--------------Cas Croisement----------------')
+            sns.lineplot(x='xtime', y='fitted_slope', hue='Sample_Code', data=queryS_prime, legend=False)
             print('*Très Grand* Risque de croisement de courbes avec score : ' + str(test_S_score))
             return testS[1]
 
         # Cas Special
         if test_S_score > 1:
             print('--------------Cas Croisement----------------')
+            sns.lineplot(x='xtime', y='fitted_slope', hue='Sample_Code', data=queryS_prime, legend=False)
             print('Risque de croisement de courbes avec score : ' + str(test_S_score))
             return testS[1]
 
@@ -191,7 +203,7 @@ def distance(df_order):
 
     # supprimer la valeur de values si elle est seul dans clusters
     counts = np.bincount(initial_clusters)
-    large_clusters = np.where(counts > 2)[0]
+    large_clusters = np.where(counts > 1)[0]
     values = values[np.isin(initial_clusters, large_clusters)]
 
     linked = linkage(values, 'ward')
@@ -232,3 +244,34 @@ def df_distance(df):
 
 def trim(df):
     return df[(df['xtime'] >= 0.2) & (df['xtime'] <= 0.8)]
+
+
+def debug_tests(host, OrderNo):
+    conn_url = URL.create(drivername='mssql+pyodbc',
+                          host=host,
+                          database='Enterprise',
+                          query={
+                              "driver": "ODBC Driver 17 for SQL Server",
+                              "TrustServerCertificate": "yes",
+                              "authentication": "ActiveDirectoryIntegrated"
+                          }
+                          )
+
+    eng = create_engine(conn_url)
+    eng.connect()
+
+    with eng.begin() as con:
+
+        queryS = pd.read_sql_query(read_and_replace('Cas_special.sql', OrderNo), con)
+        queryS_prime = utils.trim(utils.add_fitted_slope(utils.trim(queryS)))
+
+        plt.figure()
+        sns.lineplot(x='xtime', y='xvalue', hue='Sample_Code', data=queryS, legend=False)
+        plt.figure()
+        sns.lineplot(x='xtime', y='fitted_slope', hue='Sample_Code', data=queryS_prime, legend=False)
+
+        testS = utils.df_distance(queryS_prime)
+        test_S_score = testS[0]
+
+        print(test_S_score)
+        return testS[1]
